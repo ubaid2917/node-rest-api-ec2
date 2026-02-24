@@ -21,10 +21,68 @@ app.use(express.json());
 
 // Routes 
 
-app.use("/api/users", userRoutes); 
+app.use("/api/users", userRoutes);
 
 app.use('/api/products', (req, res) => {
-  res.json({ message: 'Products route' });
+  res.json(
+    [
+      {
+        "_id": "65f1a001",
+        "name": "Wireless Bluetooth Headphones",
+        "description": "High-quality over-ear wireless headphones with noise cancellation.",
+        "price": 89.99,
+        "category": "Electronics",
+        "brand": "SoundMax",
+        "stock": 120,
+        "rating": 4.5,
+        "createdAt": "2026-02-24T10:00:00Z"
+      },
+      {
+        "_id": "65f1a002",
+        "name": "Smart Fitness Watch",
+        "description": "Water-resistant fitness tracker with heart rate monitor.",
+        "price": 59.99,
+        "category": "Wearables",
+        "brand": "FitPro",
+        "stock": 75,
+        "rating": 4.2,
+        "createdAt": "2026-02-24T10:05:00Z"
+      },
+      {
+        "_id": "65f1a003",
+        "name": "Gaming Mechanical Keyboard",
+        "description": "RGB backlit mechanical keyboard with blue switches.",
+        "price": 129.99,
+        "category": "Accessories",
+        "brand": "KeyMaster",
+        "stock": 50,
+        "rating": 4.7,
+        "createdAt": "2026-02-24T10:10:00Z"
+      },
+      {
+        "_id": "65f1a004",
+        "name": "4K Ultra HD Monitor",
+        "description": "27-inch 4K UHD monitor with IPS display and HDR support.",
+        "price": 349.99,
+        "category": "Electronics",
+        "brand": "ViewTech",
+        "stock": 30,
+        "rating": 4.6,
+        "createdAt": "2026-02-24T10:15:00Z"
+      },
+      {
+        "_id": "65f1a005",
+        "name": "Portable Power Bank 20000mAh",
+        "description": "Fast-charging power bank with dual USB output.",
+        "price": 39.99,
+        "category": "Accessories",
+        "brand": "ChargeUp",
+        "stock": 200,
+        "rating": 4.3,
+        "createdAt": "2026-02-24T10:20:00Z"
+      }
+
+    ]);
 });
 
 
