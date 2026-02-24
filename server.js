@@ -19,11 +19,12 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Routes
+// Routes 
+
 app.use("/api/users", userRoutes); 
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ message: "API is healthy" });
+app.use('/api/products', (req, res) => {
+  res.json({ message: 'Products route' });
 });
 
 
