@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT for rollback checkout
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -22,35 +22,26 @@ jobs:
       - name: Deploy
         env:
           APP_NAME: BackendApi
-          APP_DIR: /home/ubuntu/apps/BackendApi
-          LAST_OK_FILE: /home/ubuntu/apps/BackendApi/last_ok_sha.txt
+          LAST_OK_FILE: /home/ubuntu/actions-runner/last_ok_sha.txt
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
           NEW_SHA: ${{ github.sha }}
         run: |
           set -e
 
-          mkdir -p "$APP_DIR"
-
-          rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
-          echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
-
-          cd "$APP_DIR"
+          echo "$PROD_ENV_FILE" > .env
           npm ci
-
           pm2 restart "$APP_NAME"
 
-          # ✅ optional health check (recommended)
+          # optional health check (recommended)
           # curl -fsS http://127.0.0.1:5000/api/products > /dev/null
 
-          # ✅ save last good commit id
           echo "$NEW_SHA" > "$LAST_OK_FILE"
 
       - name: Rollback (if deploy failed)
         if: failure()
         env:
           APP_NAME: BackendApi
-          APP_DIR: /home/ubuntu/apps/BackendApi
-          LAST_OK_FILE: /home/ubuntu/apps/BackendApi/last_ok_sha.txt
+          LAST_OK_FILE: /home/ubuntu/actions-runner/last_ok_sha.txt
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
         run: |
           set -e
@@ -65,9 +56,6 @@ jobs:
 
           git checkout "$OK_SHA"
 
-          rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
-          echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
-
-          cd "$APP_DIR"
+          echo "$PROD_ENV_FILE" > .env
           npm ci
           pm2 restart "$APP_NAME"
