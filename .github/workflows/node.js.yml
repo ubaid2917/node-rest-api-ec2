@@ -1,61 +1,35 @@
-name: Node.js CI/CD
+- name: Deploy (releases + symlink) + PM2
+  shell: bash
+  run: |
+    set -euo pipefail
 
-on:
-  push:
-    branches: ["main"]
+    APP_DIR="/var/www/node-rest-api"
+    RELEASE_ID="$(date +%Y%m%d-%H%M%S)-${GITHUB_RUN_NUMBER}"
+    RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
 
-jobs:
-  deploy:
-    runs-on: self-hosted
+    mkdir -p "$APP_DIR/releases" "$APP_DIR/shared"
+    rm -rf "$RELEASE_DIR"
+    mkdir -p "$RELEASE_DIR"
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$RELEASE_DIR/"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: "npm"
+    echo "${{ secrets.PROD_ENV_FILE }}" > "$APP_DIR/shared/.env"
+    ln -sfn "$APP_DIR/shared/.env" "$RELEASE_DIR/.env"
 
-      - name: Deploy
-        env:
-          APP_NAME: BackendApi
-          LAST_OK_FILE: /home/ubuntu/actions-runner/last_ok_sha.txt
-          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
-          NEW_SHA: ${{ github.sha }}
-        run: |
-          set -e
+    cd "$RELEASE_DIR"
+    npm ci --omit=dev
 
-          echo "$PROD_ENV_FILE" > .env
-          npm ci
-          pm2 restart "$APP_NAME"
+    if [ -L "$APP_DIR/current" ]; then
+      PREV_TARGET="$(readlink -f "$APP_DIR/current")" || true
+      ln -sfn "$PREV_TARGET" "$APP_DIR/previous" || true
+    fi
 
-          # optional health check (recommended)
-          # curl -fsS http://127.0.0.1:5000/api/products > /dev/null
+    ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
 
-          echo "$NEW_SHA" > "$LAST_OK_FILE"
+    if pm2 describe BackendApi >/dev/null 2>&1; then
+      pm2 reload BackendApi || pm2 restart BackendApi
+    else
+      pm2 start "$APP_DIR/current/server.js" --name BackendApi
+    fi
 
-      - name: Rollback (if deploy failed)
-        if: failure()
-        env:
-          APP_NAME: BackendApi
-          LAST_OK_FILE: /home/ubuntu/actions-runner/last_ok_sha.txt
-          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
-        run: |
-          set -e
-
-          if [ -f "$LAST_OK_FILE" ]; then
-            OK_SHA="$(cat "$LAST_OK_FILE")"
-            echo "Rolling back to last successful SHA: $OK_SHA"
-          else
-            OK_SHA="$(git rev-parse HEAD~1)"
-            echo "No last_ok_sha.txt. Rolling back to previous commit: $OK_SHA"
-          fi
-
-          git checkout "$OK_SHA"
-
-          echo "$PROD_ENV_FILE" > .env
-          npm ci
-          pm2 restart "$APP_NAME"
+    pm2 save
