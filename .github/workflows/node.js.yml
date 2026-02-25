@@ -9,22 +9,21 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout latest commit
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT for checkout by old SHA
+          fetch-depth: 0   # IMPORTANT for rollback checkout
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: "npm"
 
-      - name: Deploy new commit
-        id: deploy
+      - name: Deploy
         env:
           APP_NAME: BackendApi
-          APP_DIR: /var/www/BackendApi/app
-          LAST_OK_FILE: /var/www/BackendApi/last_ok_sha.txt
+          APP_DIR: /home/ubuntu/apps/BackendApi
+          LAST_OK_FILE: /home/ubuntu/apps/BackendApi/last_ok_sha.txt
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
           NEW_SHA: ${{ github.sha }}
         run: |
@@ -32,51 +31,43 @@ jobs:
 
           mkdir -p "$APP_DIR"
 
-          # copy code to server app dir
           rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
-
-          # env file
           echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
 
           cd "$APP_DIR"
           npm ci
 
-          # restart app
           pm2 restart "$APP_NAME"
 
-          # (optional) health check - add your URL/port
-          # curl -fsS http://127.0.0.1:3000/health > /dev/null
+          # ✅ optional health check (recommended)
+          # curl -fsS http://127.0.0.1:5000/api/products > /dev/null
 
-          # success -> save last good SHA
+          # ✅ save last good commit id
           echo "$NEW_SHA" > "$LAST_OK_FILE"
 
-      - name: Rollback to last successful commit (if deploy failed)
+      - name: Rollback (if deploy failed)
         if: failure()
         env:
           APP_NAME: BackendApi
-          APP_DIR: /var/www/BackendApi/app
-          LAST_OK_FILE: /var/www/BackendApi/last_ok_sha.txt
+          APP_DIR: /home/ubuntu/apps/BackendApi
+          LAST_OK_FILE: /home/ubuntu/apps/BackendApi/last_ok_sha.txt
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
         run: |
           set -e
 
-          if [ ! -f "$LAST_OK_FILE" ]; then
-            echo "No last_ok_sha.txt found. Can't rollback."
-            exit 1
+          if [ -f "$LAST_OK_FILE" ]; then
+            OK_SHA="$(cat "$LAST_OK_FILE")"
+            echo "Rolling back to last successful SHA: $OK_SHA"
+          else
+            OK_SHA="$(git rev-parse HEAD~1)"
+            echo "No last_ok_sha.txt. Rolling back to previous commit: $OK_SHA"
           fi
 
-          OK_SHA="$(cat "$LAST_OK_FILE")"
-          echo "Rolling back to: $OK_SHA"
-
-          # checkout old SHA in runner workspace
           git checkout "$OK_SHA"
 
-          # deploy that code
           rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
           echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
 
           cd "$APP_DIR"
           npm ci
           pm2 restart "$APP_NAME"
-
-          echo "✅ Rollback done to $OK_SHA"
