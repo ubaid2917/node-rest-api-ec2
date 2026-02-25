@@ -1,35 +1,65 @@
-- name: Deploy (releases + symlink) + PM2
-  shell: bash
-  run: |
-    set -euo pipefail
+name: Deploy Node API
 
-    APP_DIR="/var/www/node-rest-api"
-    RELEASE_ID="$(date +%Y%m%d-%H%M%S)-${GITHUB_RUN_NUMBER}"
-    RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-    mkdir -p "$APP_DIR/releases" "$APP_DIR/shared"
-    rm -rf "$RELEASE_DIR"
-    mkdir -p "$RELEASE_DIR"
+jobs:
+  deploy:
+    name: Deploy to EC2 runner
+    runs-on: self-hosted
+    timeout-minutes: 20
 
-    rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$RELEASE_DIR/"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    echo "${{ secrets.PROD_ENV_FILE }}" > "$APP_DIR/shared/.env"
-    ln -sfn "$APP_DIR/shared/.env" "$RELEASE_DIR/.env"
+      - name: Deploy (releases + symlink) + PM2
+        shell: bash
+        env:
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+        run: |
+          set -euo pipefail
 
-    cd "$RELEASE_DIR"
-    npm ci --omit=dev
+          if [ -z "${PROD_ENV_FILE:-}" ]; then
+            echo "Missing required secret: PROD_ENV_FILE"
+            exit 1
+          fi
 
-    if [ -L "$APP_DIR/current" ]; then
-      PREV_TARGET="$(readlink -f "$APP_DIR/current")" || true
-      ln -sfn "$PREV_TARGET" "$APP_DIR/previous" || true
-    fi
+          APP_DIR="/var/www/node-rest-api"
+          RELEASE_ID="$(date +%Y%m%d-%H%M%S)-${GITHUB_RUN_NUMBER}"
+          RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
 
-    ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+          mkdir -p "$APP_DIR/releases" "$APP_DIR/shared"
+          rm -rf "$RELEASE_DIR"
+          mkdir -p "$RELEASE_DIR"
 
-    if pm2 describe BackendApi >/dev/null 2>&1; then
-      pm2 reload BackendApi || pm2 restart BackendApi
-    else
-      pm2 start "$APP_DIR/current/server.js" --name BackendApi
-    fi
+          rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            ./ "$RELEASE_DIR/"
 
-    pm2 save
+          printf '%s\n' "$PROD_ENV_FILE" > "$APP_DIR/shared/.env"
+          chmod 600 "$APP_DIR/shared/.env"
+          ln -sfn "$APP_DIR/shared/.env" "$RELEASE_DIR/.env"
+
+          cd "$RELEASE_DIR"
+          npm ci --omit=dev
+
+          if [ -L "$APP_DIR/current" ]; then
+            PREV_TARGET="$(readlink -f "$APP_DIR/current")" || true
+            ln -sfn "$PREV_TARGET" "$APP_DIR/previous" || true
+          fi
+
+          ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+
+          if pm2 describe BackendApi >/dev/null 2>&1; then
+            pm2 reload BackendApi || pm2 restart BackendApi
+          else
+            pm2 start "$APP_DIR/current/server.js" --name BackendApi
+          fi
+
+          pm2 save
