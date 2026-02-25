@@ -83,7 +83,26 @@ app.use('/api/products', (req, res) => {
       }
 
     ]);
-});
+}); 
+
+app.get("/api/posts", (req,res)=> {
+  res.json([
+    {
+      "_id": "65f1a006",
+      "title": "Top 10 Tech Gadgets of 2026",
+      "content": "Discover the latest and greatest tech gadgets that are making waves in 2026. From smart home devices to cutting-edge wearables, we’ve got you covered with our comprehensive list of must-have tech products.",
+      "author": "Tech Guru",
+      "createdAt": "2026-02-24T11:00:00Z"
+    },
+    {
+      "_id": "65f1a007",
+      "title": "How to Stay Productive While Working from Home",
+      "content": "Working from home can be both a blessing and a challenge. In this article, we share practical tips and strategies to help you stay focused, organized, and productive while navigating the remote work lifestyle.",
+      "author": "Productivity Expert",
+      "createdAt": "2026-02-24T 11:05:00Z"
+    },      
+  ]);
+})
 
 
 app.use(errorHandler);
