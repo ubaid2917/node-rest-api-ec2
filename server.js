@@ -85,6 +85,10 @@ app.use('/api/products', (req, res) => {
     ]);
 }); 
 
+app.use('/api/new-products', (req, res) => {
+  return res.status(500).json({ message: "Rollback test: forced 500" });
+});
+
 app.get("/api/posts", (req,res)=> {
   res.json([
     {
