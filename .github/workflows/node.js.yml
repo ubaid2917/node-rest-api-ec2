@@ -1,31 +1,82 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
 name: Node.js CI/CD
 
 on:
   push:
-    branches: [ "main" ]
-  
+    branches: ["main"]
 
 jobs:
-  build:
+  deploy:
     runs-on: self-hosted
-    strategy:
-      matrix:
-        node-version: [22.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm ci
-    - run: | 
-       touch .env
-       echo "${{secrets.PROD_ENV_FILE}}" > .env
+      - name: Checkout latest commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # IMPORTANT for checkout by old SHA
 
-    - run: pm2 restart BackendApi   
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: "npm"
+
+      - name: Deploy new commit
+        id: deploy
+        env:
+          APP_NAME: BackendApi
+          APP_DIR: /var/www/BackendApi/app
+          LAST_OK_FILE: /var/www/BackendApi/last_ok_sha.txt
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+          NEW_SHA: ${{ github.sha }}
+        run: |
+          set -e
+
+          mkdir -p "$APP_DIR"
+
+          # copy code to server app dir
+          rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
+
+          # env file
+          echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
+
+          cd "$APP_DIR"
+          npm ci
+
+          # restart app
+          pm2 restart "$APP_NAME"
+
+          # (optional) health check - add your URL/port
+          # curl -fsS http://127.0.0.1:3000/health > /dev/null
+
+          # success -> save last good SHA
+          echo "$NEW_SHA" > "$LAST_OK_FILE"
+
+      - name: Rollback to last successful commit (if deploy failed)
+        if: failure()
+        env:
+          APP_NAME: BackendApi
+          APP_DIR: /var/www/BackendApi/app
+          LAST_OK_FILE: /var/www/BackendApi/last_ok_sha.txt
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+        run: |
+          set -e
+
+          if [ ! -f "$LAST_OK_FILE" ]; then
+            echo "No last_ok_sha.txt found. Can't rollback."
+            exit 1
+          fi
+
+          OK_SHA="$(cat "$LAST_OK_FILE")"
+          echo "Rolling back to: $OK_SHA"
+
+          # checkout old SHA in runner workspace
+          git checkout "$OK_SHA"
+
+          # deploy that code
+          rsync -a --delete --exclude ".git" --exclude "node_modules" ./ "$APP_DIR/"
+          echo "$PROD_ENV_FILE" > "$APP_DIR/.env"
+
+          cd "$APP_DIR"
+          npm ci
+          pm2 restart "$APP_NAME"
+
+          echo "✅ Rollback done to $OK_SHA"
